@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { Draggable } from "@hello-pangea/dnd";
-import { GripVertical, Pencil, Trash2, Calendar } from "lucide-react";
+import { GripVertical, Pencil, Trash2, Calendar, Flag, Target, Repeat } from "lucide-react";
+import {
+  getPriorityMeta,
+} from "../constants/taskOptions";
+import {
+  formatRecurrenceLabel,
+  isEffectivelyCompleted,
+  dateKey,
+} from "../utils/taskHelpers";
 import { getCategoryLabel } from "../constants/categories";
 
 function formatDue(iso) {
@@ -17,12 +25,22 @@ function formatDue(iso) {
 }
 
 /**
- * Une ligne de tâche : case à cocher, texte (éditable), catégorie, date, actions.
+ * Ligne de tâche : priorité, horizon long terme, récurrence, date.
+ * Si `grouped`, la catégorie n’est pas répétée (déjà dans le titre de section).
  */
-export default function TodoItem({ todo, index, onToggle, onDelete, onUpdate }) {
+export default function TodoItem({
+  todo,
+  index,
+  grouped,
+  onToggle,
+  onDelete,
+  onUpdate,
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(todo.text);
   const inputRef = useRef(null);
+  const today = dateKey();
+  const done = isEffectivelyCompleted(todo, today);
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -53,6 +71,9 @@ export default function TodoItem({ todo, index, onToggle, onDelete, onUpdate }) 
   }
 
   const dueLabel = formatDue(todo.dueDate);
+  const prio = getPriorityMeta(todo.priority);
+  const recurLabel = formatRecurrenceLabel(todo.recurrence);
+  const longTerm = todo.goalHorizon === "long_terme";
 
   return (
     <Draggable draggableId={todo.id} index={index}>
@@ -60,7 +81,7 @@ export default function TodoItem({ todo, index, onToggle, onDelete, onUpdate }) 
         <li
           ref={provided.innerRef}
           {...provided.draggableProps}
-          className={`todo-item${snapshot.isDragging ? " todo-item--dragging" : ""}${todo.completed ? " todo-item--done" : ""}`}
+          className={`todo-item${snapshot.isDragging ? " todo-item--dragging" : ""}${done ? " todo-item--done" : ""}`}
         >
           <button
             type="button"
@@ -75,9 +96,9 @@ export default function TodoItem({ todo, index, onToggle, onDelete, onUpdate }) 
             <input
               type="checkbox"
               className="todo-item__check"
-              checked={todo.completed}
+              checked={done}
               onChange={() => onToggle(todo.id)}
-              aria-label={todo.completed ? "Marquer non terminée" : "Marquer terminée"}
+              aria-label={done ? "Marquer non terminée" : "Marquer terminée"}
             />
             <span className="todo-item__check-ui" aria-hidden />
           </label>
@@ -104,7 +125,29 @@ export default function TodoItem({ todo, index, onToggle, onDelete, onUpdate }) 
               </button>
             )}
             <div className="todo-item__meta">
-              <span className="tag">{getCategoryLabel(todo.category)}</span>
+              {!grouped && (
+                <span className="tag">{getCategoryLabel(todo.category)}</span>
+              )}
+              <span
+                className="prio-badge"
+                style={{ color: prio.color }}
+                title={`Priorité : ${prio.label}`}
+              >
+                <Flag size={12} aria-hidden />
+                {prio.label}
+              </span>
+              {longTerm && (
+                <span className="tag tag--long" title="Objectif long terme">
+                  <Target size={12} aria-hidden />
+                  Long terme
+                </span>
+              )}
+              {recurLabel && (
+                <span className="todo-item__due todo-item__recur">
+                  <Repeat size={14} aria-hidden />
+                  {recurLabel}
+                </span>
+              )}
               {dueLabel && (
                 <span className="todo-item__due">
                   <Calendar size={14} aria-hidden />

@@ -1,58 +1,142 @@
 import { useMemo, useEffect, useCallback } from "react";
 import { DragDropContext } from "@hello-pangea/dnd";
 import { useLocalStorage } from "./hooks/useLocalStorage";
-import { reorderAfterDrag } from "./utils/reorderTodos";
+import { applyGroupedDrag } from "./utils/dragGrouped";
+import {
+  compactByCategory,
+  normalizeTask,
+  dateKey,
+  isEffectivelyCompleted,
+} from "./utils/taskHelpers";
 import Header from "./components/Header.jsx";
 import TodoForm from "./components/TodoForm.jsx";
 import TodoFilters from "./components/TodoFilters.jsx";
-import TodoList from "./components/TodoList.jsx";
+import TodoListByCategory from "./components/TodoListByCategory.jsx";
+import BrainDump from "./components/BrainDump.jsx";
+import { CATEGORIES } from "./constants/categories";
 import "./App.css";
 
 const STORAGE_TODOS = "todo-app-todos";
 const STORAGE_THEME = "todo-app-theme";
+const STORAGE_BRAIN = "todo-app-brain-dump";
 
-/** Crée un objet tâche avec un id unique */
-function createTask({ text, category, dueDate }) {
+/** Nouvelle tâche avec priorité, horizon, récurrence */
+function createTask({
+  text,
+  category,
+  dueDate,
+  priority,
+  goalHorizon,
+  recurrence,
+}) {
   return {
     id: crypto.randomUUID(),
     text,
     completed: false,
     category,
-    dueDate,
+    dueDate: dueDate ?? null,
+    priority: priority ?? "normale",
+    goalHorizon: goalHorizon ?? "court_terme",
+    recurrence: recurrence ?? { type: "none", weekdays: [] },
+    lastCompletedDate: null,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function createBrainNote(text) {
+  return {
+    id: crypto.randomUUID(),
+    text,
     createdAt: new Date().toISOString(),
   };
 }
 
 export default function App() {
-  const [todos, setTodos] = useLocalStorage(STORAGE_TODOS, []);
+  const [storedTodos, setStoredTodos] = useLocalStorage(STORAGE_TODOS, []);
   const [theme, setTheme] = useLocalStorage(STORAGE_THEME, "light");
   const [filter, setFilter] = useLocalStorage("todo-app-filter", "all");
+  const [brainDump, setBrainDump] = useLocalStorage(STORAGE_BRAIN, []);
 
-  const darkMode = theme === "dark";
+  const todos = useMemo(
+    () => compactByCategory(storedTodos.map(normalizeTask)),
+    [storedTodos]
+  );
 
-  // Applique la classe sur <html> pour le thème (utilisé par index.css)
+  const setTodos = useCallback(
+    (updater) => {
+      setStoredTodos((prev) => {
+        const base = compactByCategory(prev.map(normalizeTask));
+        const next = typeof updater === "function" ? updater(base) : updater;
+        return compactByCategory(next.map(normalizeTask));
+      });
+    },
+    [setStoredTodos]
+  );
+
+  const today = dateKey();
+
+  const counts = useMemo(() => {
+    const active = todos.filter((t) => !isEffectivelyCompleted(t, today)).length;
+    const completed = todos.filter((t) => isEffectivelyCompleted(t, today)).length;
+    return { all: todos.length, active, completed };
+  }, [todos, today]);
+
+  const filteredTodos = useMemo(() => {
+    if (filter === "active") {
+      return todos.filter((t) => !isEffectivelyCompleted(t, today));
+    }
+    if (filter === "completed") {
+      return todos.filter((t) => isEffectivelyCompleted(t, today));
+    }
+    return todos;
+  }, [todos, filter, today]);
+
+  /** Tâches visibles, rangées par sections de catégorie */
+  const todosByCategory = useMemo(() => {
+    const map = Object.fromEntries(CATEGORIES.map((c) => [c.id, []]));
+    for (const t of filteredTodos) {
+      const key = map[t.category] !== undefined ? t.category : "autre";
+      (map[key] ?? map.autre).push(t);
+    }
+    return map;
+  }, [filteredTodos]);
+
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", darkMode);
-  }, [darkMode]);
+    document.documentElement.classList.toggle("dark", theme === "dark");
+  }, [theme]);
+
+  /** Nouveau jour : les récurrences « fait hier » redeviennent à cocher */
+  useEffect(() => {
+    function sweep() {
+      const tk = dateKey();
+      setTodos((prev) => {
+        let changed = false;
+        const next = prev.map((t) => {
+          if (
+            (t.recurrence?.type === "daily" ||
+              t.recurrence?.type === "weekly") &&
+            t.lastCompletedDate &&
+            t.lastCompletedDate !== tk
+          ) {
+            changed = true;
+            return { ...t, completed: false, lastCompletedDate: null };
+          }
+          return t;
+        });
+        return changed ? next : prev;
+      });
+    }
+    sweep();
+    function onVis() {
+      if (document.visibilityState === "visible") sweep();
+    }
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [setTodos]);
 
   const toggleDark = useCallback(() => {
     setTheme((t) => (t === "dark" ? "light" : "dark"));
   }, [setTheme]);
-
-  const filteredTodos = useMemo(() => {
-    if (filter === "active") return todos.filter((t) => !t.completed);
-    if (filter === "completed") return todos.filter((t) => t.completed);
-    return todos;
-  }, [todos, filter]);
-
-  const counts = useMemo(
-    () => ({
-      all: todos.length,
-      active: todos.filter((t) => !t.completed).length,
-      completed: todos.filter((t) => t.completed).length,
-    }),
-    [todos]
-  );
 
   const addTodo = useCallback(
     (payload) => {
@@ -63,8 +147,19 @@ export default function App() {
 
   const toggleTodo = useCallback(
     (id) => {
+      const tk = dateKey();
       setTodos((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
+        prev.map((t) => {
+          if (t.id !== id) return t;
+          const eff = isEffectivelyCompleted(t, tk);
+          if (!t.recurrence || t.recurrence.type === "none") {
+            return { ...t, completed: !t.completed };
+          }
+          if (eff) {
+            return { ...t, completed: false, lastCompletedDate: null };
+          }
+          return { ...t, completed: true, lastCompletedDate: tk };
+        })
       );
     },
     [setTodos]
@@ -86,17 +181,48 @@ export default function App() {
     [setTodos]
   );
 
-  /** Fin du glisser-déposer : recalcule l’ordre des tâches */
   const onDragEnd = useCallback(
     (result) => {
-      const { destination, source } = result;
-      if (!destination) return;
-      setTodos((prev) =>
-        reorderAfterDrag(prev, filter, source.index, destination.index)
-      );
+      if (!result.destination) return;
+      setTodos((prev) => applyGroupedDrag(prev, filter, result, today));
     },
-    [filter, setTodos]
+    [filter, setTodos, today]
   );
+
+  const addBrain = useCallback(
+    (text) => {
+      setBrainDump((prev) => [...prev, createBrainNote(text)]);
+    },
+    [setBrainDump]
+  );
+
+  const deleteBrain = useCallback(
+    (id) => {
+      setBrainDump((prev) => prev.filter((n) => n.id !== id));
+    },
+    [setBrainDump]
+  );
+
+  const promoteBrain = useCallback(
+    (note) => {
+      setTodos((prev) => [
+        ...prev,
+        createTask({
+          text: note.text,
+          category: "autre",
+          dueDate: null,
+          priority: "normale",
+          goalHorizon: "court_terme",
+          recurrence: { type: "none", weekdays: [] },
+        }),
+      ]);
+      setBrainDump((prev) => prev.filter((n) => n.id !== note.id));
+    },
+    [setTodos, setBrainDump]
+  );
+
+  const darkMode = theme === "dark";
+  const brainItems = Array.isArray(brainDump) ? brainDump : [];
 
   return (
     <div className="app">
@@ -109,13 +235,19 @@ export default function App() {
           counts={counts}
         />
         <DragDropContext onDragEnd={onDragEnd}>
-          <TodoList
-            todos={filteredTodos}
+          <TodoListByCategory
+            todosByCategory={todosByCategory}
             onToggle={toggleTodo}
             onDelete={deleteTodo}
             onUpdate={updateTodo}
           />
         </DragDropContext>
+        <BrainDump
+          items={brainItems}
+          onAdd={addBrain}
+          onDelete={deleteBrain}
+          onPromote={promoteBrain}
+        />
       </div>
     </div>
   );

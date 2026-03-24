@@ -15,11 +15,19 @@
   --radius: 16px;
   --radius-sm: 10px;
   --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --prio-low: #64748b;
+  --prio-mid: #3b82f6;
+  --prio-high: #f97316;
+  --prio-urgent: #dc2626;
 }
 
 /* Thème sombre : activé quand html a la classe .dark */
 html.dark {
   color-scheme: dark;
+  --prio-low: #94a3b8;
+  --prio-mid: #60a5fa;
+  --prio-high: #fb923c;
+  --prio-urgent: #f87171;
   --bg-app: linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #0f172a 100%);
   --bg-card: rgba(30, 41, 59, 0.75);
   --bg-input: rgba(15, 23, 42, 0.9);
