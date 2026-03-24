@@ -1,0 +1,59 @@
+/* Variables couleur : thème clair (défaut) */
+:root {
+  color-scheme: light;
+  --bg-app: linear-gradient(145deg, #e8ecf4 0%, #f4f6fa 50%, #eef1f8 100%);
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-input: rgba(255, 255, 255, 0.95);
+  --border: rgba(15, 23, 42, 0.08);
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --accent: #6366f1;
+  --accent-soft: rgba(99, 102, 241, 0.15);
+  --success: #22c55e;
+  --danger: #ef4444;
+  --shadow: 0 8px 32px rgba(15, 23, 42, 0.08);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* Thème sombre : activé quand html a la classe .dark */
+html.dark {
+  color-scheme: dark;
+  --bg-app: linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #0f172a 100%);
+  --bg-card: rgba(30, 41, 59, 0.75);
+  --bg-input: rgba(15, 23, 42, 0.9);
+  --border: rgba(148, 163, 184, 0.12);
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --accent: #818cf8;
+  --accent-soft: rgba(129, 140, 248, 0.2);
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: 1rem;
+}
