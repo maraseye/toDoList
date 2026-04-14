@@ -1,1 +1,1 @@
- les infos sont stockées dans l local storage wslm
+ tt est stockés dans l local storage wslm
